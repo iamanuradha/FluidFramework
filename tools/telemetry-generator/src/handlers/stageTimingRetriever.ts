@@ -2,6 +2,8 @@
  * Copyright (c) Microsoft Corporation and contributors. All rights reserved.
  * Licensed under the MIT License.
  */
+
+/** Interface to make it easier to parse json returned from the timeline REST API */
 interface ParsedJob {
 	stageName: string;
 	startTime: number;
@@ -13,6 +15,8 @@ interface ParsedJob {
 
 module.exports = function handler(fileData, logger) {
 	// - fileData is a JSON object obtained by calling JSON.parse() on the contents of a file.
+	// In this particular handler, we are using the timeline REST API to retrieve the status of the pipeline:
+	// Ex. https://dev.azure.com/fluidframework/internal/_apis/build/builds/<buildId>/timeline?api-version=6.0-preview.1
 	// - logger is an ITelemetryBufferedLogger. Call its send() method to write the output telemetry
 	//   events.
 	if (fileData.records?.length === undefined || fileData.records?.length === 0) {
@@ -24,6 +28,7 @@ module.exports = function handler(fileData, logger) {
 		console.log("BUILD_ID not defined.");
 	}
 
+	// Note: type == "Task" would include tasks from the stages in the result set. It might be interesting in the future - for now we will only collect stages.
 	const parsedJobs: ParsedJob[] = fileData.records
 		.filter((job) => job.type === "Stage")
 		.map((job) => {
@@ -31,29 +36,22 @@ module.exports = function handler(fileData, logger) {
 			const finishTime = Date.parse(job.finishTime?.toString()) ?? undefined;
 			const dateDiff =
 				finishTime && startTime ? Math.abs(finishTime - startTime) / 1000 : undefined; // diff in seconds
-			const hours = dateDiff !== undefined ? Math.floor(dateDiff / 3600) : undefined;
-			const minutes = dateDiff !== undefined ? Math.floor((dateDiff % 3600) / 60) : undefined;
-			const seconds = dateDiff !== undefined ? Math.floor(dateDiff % 60) : undefined;
 			console.log(`Name=${job.name}`);
 			return {
 				stageName: job.name,
 				startTime,
 				finishTime,
 				totalTime: dateDiff,
-				formattedTime:
-					dateDiff !== undefined
-						? `${hours} hours, ${minutes} minutes and ${seconds} seconds`
-						: undefined,
 				state: job.state,
 				result: job.result,
 			};
 		});
 
 	for (const job of parsedJobs) {
+		// Hardcoding the last stage name for now as it will need to be bypassed (still in Progress).
 		if (job.stageName === "runAfterAll") {
 			continue;
 		}
-		// we only need .js files
 		logger.send({
 			category: "performance",
 			eventName: "StageTiming",
