@@ -26,7 +26,7 @@ class TestLogger implements ITelemetryBufferedLogger {
 		event.testName = this.testName ?? currentTestName;
 		event.testVariant = testVariant;
 		event.hostName = pkgName;
-		this.parentLogger.send({ ...event, propsDict });
+		this.parentLogger.send({ ...event, ...propsDict });
 	}
 	async flush() {
 		return this.parentLogger.flush();
