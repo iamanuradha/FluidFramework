@@ -28,7 +28,6 @@ FLAGS
                                <options: client|server|azure|build-tools|gitrest|historian>
   -g, --skipScope=<option>...  Package scopes to filter out.
                                <options: client|server|azure|build-tools|gitrest|historian>
-  -v, --verbose                Verbose logging.
   --fix                        Fix invalid versions in the package.json file.
   --packages                   Run on all independent packages in the repo. Cannot be used with --all, --dir, or
                                --releaseGroup.
@@ -39,6 +38,9 @@ FLAGS
                                --releaseGroup.
   --scope=<value>...           Package scopes to filter to.
   --version=<value>            The version against which to check all the packages.
+
+GLOBAL FLAGS
+  -v, --verbose  Verbose logging.
 
 DESCRIPTION
   Checks that all packages have the same version set in package.json. The packages checked can be filtered by standard
@@ -51,11 +53,14 @@ Checks if a changeset was added when compared against a branch. This is used in 
 
 ```
 USAGE
-  $ flub check changeset -b <value> [-v]
+  $ flub check changeset -b <value> [-v] [--json]
 
 FLAGS
   -b, --branch=<value>  (required) The branch to compare against.
-  -v, --verbose         Verbose logging.
+
+GLOBAL FLAGS
+  -v, --verbose  Verbose logging.
+  --json         Format output as json.
 
 EXAMPLES
   Check if a changeset was added when compared to the 'main' branch.
@@ -76,11 +81,13 @@ USAGE
   $ flub check layers --info <value> [-v] [--md <value>] [--dot <value>] [--logtime]
 
 FLAGS
-  -v, --verbose   Verbose logging.
   --dot=<value>   Generate *.dot for GraphViz
   --info=<value>  (required) Path to the layer graph json file
   --logtime       Display the current time on every status message for logging
   --md=<value>    Generate PACKAGES.md file at this path relative to repo root
+
+GLOBAL FLAGS
+  -v, --verbose  Verbose logging.
 
 DESCRIPTION
   Checks that the dependencies between Fluid Framework packages are properly layered.
@@ -101,9 +108,11 @@ FLAGS
   -e, --exclusions=<value>         Path to the exclusions.json file.
   -f, --fix                        Fix errors if possible.
   -p, --path=<value>               Filter file paths by <regex>.
-  -v, --verbose                    Verbose logging.
   --listHandlers                   List all policy handlers by name.
   --stdin                          Read list of files from stdin.
+
+GLOBAL FLAGS
+  -v, --verbose  Verbose logging.
 
 DESCRIPTION
   Checks and applies policies to the files in the repository, such as ensuring a consistent header comment in files,
