@@ -13,7 +13,6 @@ import {
 } from "@fluidframework/server-services-core";
 import sillyname from "sillyname";
 import { Provider } from "nconf";
-import * as log from "winston";
 import { RdkafkaConsumer } from "./rdkafkaConsumer";
 
 export interface IRdkafkaResources extends IResources {
@@ -64,8 +63,8 @@ export class RdkafkaResourcesFactory implements IResourcesFactory<RdkafkaResourc
 		const consumeTimeout = config.get("kafka:lib:rdkafkaConsumeTimeout");
 		const maxConsumerCommitRetries = config.get("kafka:lib:rdkafkaMaxConsumerCommitRetries");
 		const sslCACertFilePath: string = config.get("kafka:lib:sslCACertFilePath");
+		const customRestartOnKafkaErrorCodes = config.get("kafka:customRestartOnKafkaErrorCodes");
 		const eventHubConnString: string = config.get("kafka:lib:eventHubConnString");
-		log.error(`EventHubConnString in resourceFactory.ts: ${eventHubConnString}`);
 
 		// Receive topic and group - for now we will assume an entry in config mapping
 		// to the given name. Later though the lambda config will likely be split from the stream config
@@ -80,7 +79,7 @@ export class RdkafkaResourcesFactory implements IResourcesFactory<RdkafkaResourc
 			zooKeeper: zookeeperEndpoint ? zookeeperEndpoint.split(",") : [],
 		};
 
-		const consumer = new RdkafkaConsumer(endpoints, clientId, receiveTopic, groupId, {
+		const options = {
 			numberOfPartitions,
 			replicationFactor,
 			optimizedRebalance,
@@ -89,8 +88,11 @@ export class RdkafkaResourcesFactory implements IResourcesFactory<RdkafkaResourc
 			maxConsumerCommitRetries,
 			sslCACertFilePath,
 			zooKeeperClientConstructor: this.zookeeperClientConstructor,
-			eventHubConnString,
-		});
+			restartOnKafkaErrorCodes: customRestartOnKafkaErrorCodes,
+			eventHubConnString
+		};
+
+		const consumer = new RdkafkaConsumer(endpoints, clientId, receiveTopic, groupId, options);
 
 		return new RdkafkaResources(lambdaFactory, consumer, config);
 	}
