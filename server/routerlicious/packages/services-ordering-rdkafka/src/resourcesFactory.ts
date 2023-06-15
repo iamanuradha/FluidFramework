@@ -89,7 +89,7 @@ export class RdkafkaResourcesFactory implements IResourcesFactory<RdkafkaResourc
 			sslCACertFilePath,
 			zooKeeperClientConstructor: this.zookeeperClientConstructor,
 			restartOnKafkaErrorCodes: customRestartOnKafkaErrorCodes,
-			eventHubConnString
+			eventHubConnString,
 		};
 
 		const consumer = new RdkafkaConsumer(endpoints, clientId, receiveTopic, groupId, options);
