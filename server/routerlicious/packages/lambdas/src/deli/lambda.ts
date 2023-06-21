@@ -422,7 +422,9 @@ export class DeliLambda extends TypedEventEmitter<IDeliLambdaEvents> implements 
 	}
 
 	public handler(rawMessage: IQueuedMessage) {
-        Lumberjack.info(`rawMessage offset: ${rawMessage.offset}, currentOffset: ${this.logOffset}`);
+		Lumberjack.info(
+			`rawMessage offset: ${rawMessage.offset}, currentOffset: ${this.logOffset}`,
+		);
 		// In cases where we are reprocessing messages we have already checkpointed exit early
 		if (this.logOffset !== undefined && rawMessage.offset <= this.logOffset) {
 			const reprocessOpsMetric = Lumberjack.newLumberMetric(LumberEventName.ReprocessOps);
