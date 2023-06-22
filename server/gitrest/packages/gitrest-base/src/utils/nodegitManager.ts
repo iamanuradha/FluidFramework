@@ -179,7 +179,7 @@ export class NodegitRepositoryManager extends RepositoryManagerBase {
 
 	protected async createTreeCore(params: resources.ICreateTreeParams): Promise<resources.ITree> {
 		const builder = await nodegit.Treebuilder.create(this.repo, null);
-
+        console.log(`request params ${params}`);
 		// build up the tree
 		for (const node of params.tree) {
 			// eslint-disable-next-line @typescript-eslint/no-floating-promises
