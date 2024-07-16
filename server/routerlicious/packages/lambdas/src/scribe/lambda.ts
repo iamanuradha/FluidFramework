@@ -161,6 +161,7 @@ export class ScribeLambda implements IPartitionLambda {
 
 				// Skip messages that were already checkpointed on a prior run.
 				if (value.operation.sequenceNumber <= this.sequenceNumber) {
+                    console.log(`SCRIBE_LAMBDA: continue already checkpointed messages`);
 					continue;
 				}
 
@@ -170,6 +171,7 @@ export class ScribeLambda implements IPartitionLambda {
 
 				// Handles a partial checkpoint case where messages were inserted into DB but checkpointing failed.
 				if (value.operation.sequenceNumber <= lastProtocolHandlerSequenceNumber) {
+                    console.log(`SCRIBE_LAMBDA: continue partial checkpoint case`);
 					continue;
 				}
 
@@ -183,6 +185,7 @@ export class ScribeLambda implements IPartitionLambda {
 						const to = value.operation.sequenceNumber - 1;
 						const additionalPendingMessages =
 							await this.pendingMessageReader.readMessages(from, to);
+                        console.log(`SCRIBE_LAMBDA: process pending messages from ${from} to ${to} with ${additionalPendingMessages.length} messages`);
 						for (const additionalPendingMessage of additionalPendingMessages) {
 							this.pendingMessages.push(additionalPendingMessage);
 						}
@@ -200,6 +203,7 @@ export class ScribeLambda implements IPartitionLambda {
 				this.pendingMessages.push(value.operation);
 
 				if (this.serviceConfiguration.scribe.enablePendingCheckpointMessages) {
+                    console.log(`SCRIBE_LAMBDA: push pending checkpoint messages`);
 					this.pendingCheckpointMessages.push(value);
 				}
 
@@ -209,6 +213,7 @@ export class ScribeLambda implements IPartitionLambda {
 				this.minSequenceNumber = value.operation.minimumSequenceNumber;
 
 				if (msnChanged) {
+                    console.log(`SCRIBE_LAMBDA: process from pending with minSequenceNumber ${this.minSequenceNumber}`);
 					// When the MSN changes we can process up to it to save space
 					this.processFromPending(this.minSequenceNumber, message);
 				}
@@ -239,12 +244,14 @@ export class ScribeLambda implements IPartitionLambda {
 						// This eliminates the corner case where we have
 						// already captured this summary and are processing this message due to a replay of the stream.
 						if (this.protocolHead < this.protocolHandler.sequenceNumber) {
+                            console.log(`SCRIBE_LAMBDA: process from message due to a replay of the stream`);
 							try {
 								const scribeCheckpoint = this.generateScribeCheckpoint(
 									this.lastOffset,
 								);
 								const operation =
 									value.operation as ISequencedDocumentAugmentedMessage;
+                                console.log(`SCRIBE_LAMBDA: writing client summary`);
 								const summaryResponse = await this.summaryWriter.writeClientSummary(
 									operation,
 									this.lastClientSummaryHead,
@@ -259,6 +266,7 @@ export class ScribeLambda implements IPartitionLambda {
 									// On a successful write, send an ack message to clients and a control message to deli.
 									// Otherwise send a nack and revert the protocol state back to pre summary state.
 									if (summaryResponse.status) {
+                                        console.log(`SCRIBE_LAMBDA: send summary ack`);
 										await this.sendSummaryAck(
 											summaryResponse.message as ISummaryAck,
 										);
@@ -267,9 +275,11 @@ export class ScribeLambda implements IPartitionLambda {
 											true,
 											false,
 										);
+                                        console.log(`SCRIBE_LAMBDA: update protocol head`);
 										this.updateProtocolHead(
 											this.protocolHandler.sequenceNumber,
 										);
+                                        console.log(`SCRIBE_LAMBDA: update last summary sequence number`);
 										this.updateLastSummarySequenceNumber(
 											this.protocolHandler.sequenceNumber,
 										);
@@ -285,6 +295,7 @@ export class ScribeLambda implements IPartitionLambda {
 											getLumberBaseProperties(this.documentId, this.tenantId),
 										);
 									} else {
+                                        console.log(`SCRIBE_LAMBDA: summary nacked`);
 										const nackMessage = summaryResponse.message as ISummaryNack;
 										await this.sendSummaryNack(nackMessage);
 										const errorMsg =
@@ -354,8 +365,10 @@ export class ScribeLambda implements IPartitionLambda {
 						enableServiceSummaryForTenant
 					) {
 						const operation = value.operation as ISequencedDocumentAugmentedMessage;
+                        console.log(`SCRIBE_LAMBDA: generate scribe checkpoint for no client`);
 						const scribeCheckpoint = this.generateScribeCheckpoint(this.lastOffset);
 						try {
+                            console.log(`SCRIBE_LAMBDA: write service summary`);
 							const summaryResponse = await this.summaryWriter.writeServiceSummary(
 								operation,
 								this.protocolHead,
@@ -367,6 +380,7 @@ export class ScribeLambda implements IPartitionLambda {
 								if (
 									this.serviceConfiguration.scribe.clearCacheAfterServiceSummary
 								) {
+                                    console.log(`SCRIBE_LAMBDA: cleared cache after service summary`);
 									this.clearCache = true;
 								}
 								await this.sendSummaryConfirmationMessage(
@@ -374,9 +388,11 @@ export class ScribeLambda implements IPartitionLambda {
 									false,
 									this.serviceConfiguration.scribe.clearCacheAfterServiceSummary,
 								);
+                                console.log(`SCRIBE_LAMBDA: update last summary sequence number to ${operation.sequenceNumber}`);
 								this.updateLastSummarySequenceNumber(operation.sequenceNumber);
 								// Add service summary handle to validParentSummaries so that SummaryWriter knows it is a valid
 								// alternate parent summary handle. Otherwise only lastClientSummaryHead and latest service summary are accepted.
+                                console.log(`SCRIBE_LAMBDA: update valid parent summaries`);
 								this.updateValidParentSummaries(summaryResponse);
 								const summaryResult = `Service summary success @${operation.sequenceNumber}`;
 								this.context.log?.info(summaryResult, {
@@ -415,6 +431,7 @@ export class ScribeLambda implements IPartitionLambda {
 						}
 					}
 				} else if (value.operation.type === MessageType.SummaryAck) {
+                    console.log(`SCRIBE_LAMBDA: process summary ack`);
 					const operation = value.operation as ISequencedDocumentSystemMessage;
 					const content: ISummaryAck = operation.data
 						? JSON.parse(operation.data)
@@ -427,12 +444,14 @@ export class ScribeLambda implements IPartitionLambda {
 					// An external summary writer can only update the protocolHead when the ack is sequenced
 					// back to the stream.
 					if (this.summaryWriter.isExternal) {
+                        console.log(`SCRIBE_LAMBDA: update protocol head and last summary sequence number to ${operation.sequenceNumber}`);
 						this.updateProtocolHead(content.summaryProposal.summarySequenceNumber);
 						this.updateLastSummarySequenceNumber(
 							content.summaryProposal.summarySequenceNumber,
 						);
 					}
 				} else if (value.operation.type === MessageType.ClientJoin) {
+                    console.log(`SCRIBE_LAMBDA: set globalCheckpointOnly to false for client join`);
 					this.globalCheckpointOnly = false;
 				}
 			}
@@ -443,15 +462,18 @@ export class ScribeLambda implements IPartitionLambda {
 		this.checkpointInfo.rawMessagesSinceCheckpoint++;
 
 		if (this.noActiveClients) {
+            console.log(`SCRIBE_LAMBDA: prepare checkpoint for no active clients`);
 			this.prepareCheckpoint(message, CheckpointReason.NoClients);
 			this.noActiveClients = false;
 		} else {
 			this.globalCheckpointOnly = false;
 			const checkpointReason = this.getCheckpointReason();
 			if (checkpointReason !== undefined) {
+                console.log(`SCRIBE_LAMBDA: prepare checkpoint for checkpoint reason ${checkpointReason}`);
 				// checkpoint the current up-to-date state
 				this.prepareCheckpoint(message, checkpointReason);
 			} else {
+                console.log(`SCRIBE_LAMBDA: update checkpoint idle timer`);
 				this.updateCheckpointIdleTimer();
 			}
 		}
@@ -462,6 +484,7 @@ export class ScribeLambda implements IPartitionLambda {
 		checkpointReason: CheckpointReason,
 		skipKafkaCheckpoint?: boolean,
 	) {
+        console.log(`SCRIBE_LAMBDA: prepare checkpoint for checkpoint reason ${checkpointReason}`);
 		// Get checkpoint context
 		const checkpoint = this.generateScribeCheckpoint(message.offset);
 		this.updateCheckpointMessages(message);
@@ -485,6 +508,7 @@ export class ScribeLambda implements IPartitionLambda {
 	}
 
 	public close(closeType: LambdaCloseType) {
+        console.log(`SCRIBE_LAMBDA: close with close type ${closeType}`);
 		this.logScribeSessionMetrics(closeType);
 
 		this.closed = true;
@@ -532,14 +556,17 @@ export class ScribeLambda implements IPartitionLambda {
 					typeof message.contents === "string" &&
 					message.type !== MessageType.ClientLeave
 				) {
+                    console.log(`SCRIBE_LAMBDA: process message with JSON.parse for message type ${message.type}`);
 					const clonedMessage = _.cloneDeep(message);
 					clonedMessage.contents = JSON.parse(clonedMessage.contents);
 					this.protocolHandler.processMessage(clonedMessage, false);
 				} else {
+                    console.log(`SCRIBE_LAMBDA: process message for client leave message type`);
 					this.protocolHandler.processMessage(message, false);
 				}
 			} catch (error) {
 				// We should mark the document as corrupt here
+                console.log(`SCRIBE_LAMBDA: mark document as corrupt`);
 				this.markDocumentAsCorrupt(queuedMessage);
 				this.context.log?.error(`Protocol error ${error}`, {
 					messageMetaData: {
@@ -559,6 +586,7 @@ export class ScribeLambda implements IPartitionLambda {
 
 	private markDocumentAsCorrupt(message: IQueuedMessage) {
 		this.isDocumentCorrupt = true;
+        console.log(`SCRIBE_LAMBDA: prepare checkpoint for corrupted document`);
 		this.prepareCheckpoint(message, CheckpointReason.MarkAsCorrupt, this.isDocumentCorrupt);
 	}
 
@@ -592,14 +620,17 @@ export class ScribeLambda implements IPartitionLambda {
 		skipKafkaCheckpoint: boolean = false,
 	) {
 		if (this.closed) {
+            console.log(`SCRIBE_LAMBDA: skip checkpoint due to lambda closed`);
 			return;
 		}
 
 		if (this.pendingP) {
+            console.log(`SCRIBE_LAMBDA: pending promise for checkpoint`);
 			this.pendingCheckpointScribe = checkpoint;
 			this.pendingCheckpointOffset = queuedMessage;
 			return;
 		}
+        console.log(`SCRIBE_LAMBDA: if clear cache then delete checkpoint else write checkpoint`);
 		let databaseCheckpointFailed = false;
 		this.pendingP = clearCache
 			? this.checkpointManager.delete(this.protocolHead, true)
@@ -615,6 +646,7 @@ export class ScribeLambda implements IPartitionLambda {
 			.then(() => {
 				this.pendingP = undefined;
 				if (!skipKafkaCheckpoint && !databaseCheckpointFailed) {
+                    console.log(`SCRIBE_LAMBDA: checkpoint if database checkpoint not failed and skip kafka checkpoint is false`);
 					this.context.checkpoint(queuedMessage, this.restartOnCheckpointFailure);
 				} else if (databaseCheckpointFailed) {
 					Lumberjack.info(
@@ -626,6 +658,7 @@ export class ScribeLambda implements IPartitionLambda {
 				const pendingScribe = this.pendingCheckpointScribe;
 				const pendingOffset = this.pendingCheckpointOffset;
 				if (pendingScribe && pendingOffset) {
+                    console.log(`SCRIBE_LAMBDA: checkpoint core for pending scribe and offset`);
 					this.pendingCheckpointScribe = undefined;
 					this.pendingCheckpointOffset = undefined;
 					this.checkpointCore(pendingScribe, pendingOffset, clearCache);
@@ -654,6 +687,7 @@ export class ScribeLambda implements IPartitionLambda {
 		if (inserts.length > 0) {
 			// Since we are storing logTails with every summary, we need to make sure that messages are either in DB
 			// or in memory. In other words, we can only remove messages from memory once there is a copy in the DB
+            console.log(`SCRIBE_LAMBDA: remove messages from memory once there is a copy in the DB`);
 			const lastInsertedSeqNumber = inserts[inserts.length - 1].operation.sequenceNumber;
 			while (
 				this.pendingCheckpointMessages.length > 0 &&
@@ -704,7 +738,7 @@ export class ScribeLambda implements IPartitionLambda {
 			traces: this.serviceConfiguration.enableTraces ? [] : undefined,
 			type: MessageType.SummaryAck,
 		};
-
+        console.log(`SCRIBE_LAMBDA: sendToDeli summary ack`);
 		return sendToDeli(this.tenantId, this.documentId, this.producer, operation);
 	}
 
@@ -717,7 +751,7 @@ export class ScribeLambda implements IPartitionLambda {
 			traces: this.serviceConfiguration.enableTraces ? [] : undefined,
 			type: MessageType.SummaryNack,
 		};
-
+        console.log(`SCRIBE_LAMBDA: sendToDeli summary nack`);
 		return sendToDeli(this.tenantId, this.documentId, this.producer, operation);
 	}
 
@@ -747,7 +781,7 @@ export class ScribeLambda implements IPartitionLambda {
 			traces: this.serviceConfiguration.enableTraces ? [] : undefined,
 			type: MessageType.Control,
 		};
-
+        console.log(`SCRIBE_LAMBDA: sendToDeli summary confirmation`);
 		return sendToDeli(this.tenantId, this.documentId, this.producer, operation);
 	}
 
@@ -765,10 +799,12 @@ export class ScribeLambda implements IPartitionLambda {
 		this.checkpointInfo.currentCheckpointMessage = message;
 
 		if (this.noActiveClients) {
+            console.log(`SCRIBE_LAMBDA: no active clients`);
 			this.checkpointInfo.nextKafkaCheckpointMessage = undefined;
 			this.checkpointInfo.currentKafkaCheckpointMessage = message;
 		} else {
 			// Keeps Kafka checkpoint behind by 1 message (is this necessary?)
+            console.log(`SCRIBE_LAMBDA: Keeps Kafka checkpoint behind by 1 message`);
 			const kafkaCheckpointMessage = this.checkpointInfo.nextKafkaCheckpointMessage;
 			this.checkpointInfo.nextKafkaCheckpointMessage = message;
 			this.checkpointInfo.currentKafkaCheckpointMessage = kafkaCheckpointMessage;
@@ -781,16 +817,19 @@ export class ScribeLambda implements IPartitionLambda {
 		const checkpointHeuristics = this.serviceConfiguration.scribe.checkpointHeuristics;
 
 		if (!checkpointHeuristics.enable) {
+            console.log(`SCRIBE_LAMBDA: always checkpoint since heuristics are disabled`);
 			// always checkpoint since heuristics are disabled
 			return CheckpointReason.EveryMessage;
 		}
 
 		if (this.checkpointInfo.rawMessagesSinceCheckpoint >= checkpointHeuristics.maxMessages) {
+            console.log(`SCRIBE_LAMBDA: max messages since last checkpoint exceeded`);
 			// exceeded max messages since last checkpoint
 			return CheckpointReason.MaxMessages;
 		}
 
 		if (Date.now() - this.checkpointInfo.lastCheckpointTime >= checkpointHeuristics.maxTime) {
+            console.log(`SCRIBE_LAMBDA: max time since last checkpoint exceeded`);
 			// exceeded max time since last checkpoint
 			return CheckpointReason.MaxTime;
 		}
@@ -800,6 +839,7 @@ export class ScribeLambda implements IPartitionLambda {
 
 	private clearCheckpointIdleTimer() {
 		if (this.checkpointInfo.idleTimer !== undefined) {
+            console.log(`SCRIBE_LAMBDA: clear checkpoint idle timer`);
 			clearTimeout(this.checkpointInfo.idleTimer);
 			this.checkpointInfo.idleTimer = undefined;
 		}
@@ -825,8 +865,10 @@ export class ScribeLambda implements IPartitionLambda {
 				initialScribeCheckpointMessage === this.checkpointInfo.currentCheckpointMessage &&
 				!this.isDocumentCorrupt
 			) {
+                console.log(`SCRIBE_LAMBDA: checkpoint due to idle time`);
 				this.checkpoint(CheckpointReason.IdleTime);
 				if (initialScribeCheckpointMessage) {
+                    console.log(`SCRIBE_LAMBDA: generate scribe checkpoint for idle time`);
 					this.checkpointCore(
 						this.generateScribeCheckpoint(initialScribeCheckpointMessage.offset),
 						initialScribeCheckpointMessage,
