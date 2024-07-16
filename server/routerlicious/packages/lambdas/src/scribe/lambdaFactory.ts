@@ -151,8 +151,9 @@ export class ScribeLambdaFactory
 				Lumberjack.error(errMsg, lumberProperties);
 				if (this.serviceConfiguration.enforceDiscoveryFlow) {
 					// This can/will prevent any users from creating a valid session in this location
-					// for the liftime of this NoOpLambda. This is not ideal; however, throwing an error
+					// for the lifetime of this NoOpLambda. This is not ideal; however, throwing an error
 					// to prevent lambda creation would mark the document as corrupted, which is worse.
+                    console.log(`SCRIBE LAMBDA FACTORY: Returning NoOpLambda for enforceDiscoveryFlow as true`)
 					return new NoOpLambda(context);
 				}
 			}
@@ -206,6 +207,7 @@ export class ScribeLambdaFactory
 				Lumberjack.info(checkpointMessage, lumberProperties);
 			}
 		} else {
+            console.log(`SCRIBE LAMBDA FACTORY: Existing document. restoreFromCheckpoint`);
 			lastCheckpoint = (await this.checkpointService.restoreFromCheckpoint(
 				documentId,
 				tenantId,
@@ -237,6 +239,7 @@ export class ScribeLambdaFactory
 		let expectedSequenceNumber = lastCheckpoint.protocolState.sequenceNumber + 1;
 		for (const message of opsSinceLastSummary) {
 			if (message.sequenceNumber !== expectedSequenceNumber) {
+                console.log(`SCRIBE LAMBDA FACTORY: Invalid message sequence from checkpoint/summary`);
 				const error = new Error(
 					`Invalid message sequence from checkpoint/summary.` +
 						`Current message @${message.sequenceNumber}.` +
@@ -331,6 +334,7 @@ export class ScribeLambdaFactory
 	): Promise<ISequencedDocumentMessage[]> {
 		let opMessages: ISequencedDocumentMessage[] = [];
 		if (!this.getDeltasViaAlfred) {
+            console.log(`SCRIBE LAMBDA FACTORY: Fetch pending ops from scribeDeltas collection`);
 			// Fetch pending ops from scribeDeltas collection
 			const dbMessages = await this.messageCollection.find(
 				{ documentId, tenantId },
@@ -338,6 +342,7 @@ export class ScribeLambdaFactory
 			);
 			opMessages = dbMessages.map((dbMessage) => dbMessage.operation);
 		} else if (lastCheckpoint.logOffset !== -1) {
+            console.log(`SCRIBE LAMBDA FACTORY: get dealtas`);
 			opMessages = await this.deltaManager.getDeltas(
 				"",
 				tenantId,
